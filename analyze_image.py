@@ -18,7 +18,6 @@ def import_images(path, crop, start_time):
     for file in os.listdir(path):
         if file.endswith(".jpg"):
             im = color.rgb2gray(io.imread(path + "\\" + file))
-            im = np.rot90(im)
             im = im[crop[0]:crop[1], crop[2]:crop[3]]
             im = np.flip(np.mean(im, axis=1))
             data.append(im)
@@ -114,6 +113,6 @@ crop, start_time = eval(open(path + "/data.txt", "r").read()).values()
 start_time = datetime.strptime(start_time, "%Y%m%d%H%M%S")
 data, time = import_images(path, crop, start_time)
 fit_all(data)
-# heatmap_plot(data, path)
+heatmap_plot(data, path)
 # plot_coeffs(fit_all(data), time, path)
 # latex_plot(fit_all(data), time, path)
