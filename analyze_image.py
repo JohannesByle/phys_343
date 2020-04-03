@@ -1,8 +1,7 @@
 import os
-from skimage import io
+from skimage import io, transform, color
 import numpy as np
 import matplotlib.pyplot as plt
-from skimage import color
 from scipy.optimize import curve_fit
 from scipy.special import erfc
 from datetime import datetime
@@ -12,16 +11,23 @@ def conc_func(x, a, b, c, d):
     return a + 0.5 * c * (1 - erfc((x - b) / (2 * np.sqrt(d))))
 
 
-def import_images(path, crop, start_time):
+def import_images(path):
+    crop, start_time, filetype, angle = eval(open(path + "/data.txt", "r").read()).values()
+    start_time = datetime.strptime(start_time, "%Y%m%d%H%M%S")
     data = []
     time = []
+    show_image = False
     for file in os.listdir(path):
-        if file.endswith(".jpg"):
+        if file.endswith(filetype):
             im = color.rgb2gray(io.imread(path + "\\" + file))
+            im = transform.rotate(im, float(angle))
             im = im[crop[0]:crop[1], crop[2]:crop[3]]
+            if show_image:
+                plt.imshow(im)
+                plt.show()
             im = np.flip(np.mean(im, axis=1))
             data.append(im)
-            time.append((datetime.strptime(file[:-7], "%Y%m%d%H%M%S") - start_time).total_seconds())
+            time.append((datetime.strptime(file[:-len(filetype)], "%Y%m%d%H%M%S") - start_time).total_seconds())
 
     return np.asarray(data), time
 
@@ -48,6 +54,7 @@ def heatmap_plot(data, path):
 
 def fit_all(data):
     coeffs = []
+    plot_fit = False
     for y in data:
         x = np.asarray(range(len(y)))
         a = (max(y) - min(y))
@@ -56,7 +63,6 @@ def fit_all(data):
         d = 1
         args, _ = curve_fit(conc_func, x, y, [a, b, c, d])
         coeffs.append(args)
-        plot_fit = False
         if plot_fit:
             plt.scatter(x, y, label="Data", color="red")
             plt.plot(x, conc_func(x, *args), label="Fit")
@@ -108,11 +114,9 @@ def latex_plot(coeffs, time, path):
     plt.show()
 
 
-path = r"D:/Coding/phys_343/DarkSyrup_4-1"
-crop, start_time = eval(open(path + "/data.txt", "r").read()).values()
-start_time = datetime.strptime(start_time, "%Y%m%d%H%M%S")
-data, time = import_images(path, crop, start_time)
+path = r"\\169.254.39.157\Shared_Folder\Webcam_Test"
+data, time = import_images(path)
 fit_all(data)
-# heatmap_plot(data, path)
+heatmap_plot(data, path)
 plot_coeffs(fit_all(data), time, path)
 # latex_plot(fit_all(data), time, path)
