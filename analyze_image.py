@@ -19,9 +19,10 @@ def import_images(path):
     time = []
     show_image = False
     n = 0
+    thinning_constant = 1
     for file in tqdm(os.listdir(path)):
         n += 1
-        if file.endswith(filetype) and n % 5 == 0:
+        if file.endswith(filetype) and n % thinning_constant == 0:
             im = io.imread(path + "\\" + file)
             im = transform.rotate(im, float(angle))
             im = im[crop[0]:crop[1], crop[2]:crop[3]]
@@ -33,6 +34,7 @@ def import_images(path):
             data.append(im)
             time.append((datetime.strptime(file[:-len(filetype)], "%Y%m%d%H%M%S") - start_time).total_seconds())
 
+    time, data = zip(*sorted(zip(time, data)))
     return np.asarray(data), time
 
 
@@ -49,8 +51,9 @@ def surf_plot(data, path):
 
 def heatmap_plot(data, color_data, path):
     fig, axs = plt.subplots(2)
-    axs[0].imshow(np.rot90(data), cmap=plt.cm.gray)
-    axs[1].imshow(np.rot90(color_data))
+    extent = [0, 16, 0, 4]
+    axs[0].imshow(np.rot90(data), cmap=plt.cm.gray, extent=extent)
+    axs[1].imshow(np.rot90(color_data), extent=extent)
     plt.xlabel("Time (arb. units)")
     plt.ylabel("Pixel")
     plt.tight_layout()
