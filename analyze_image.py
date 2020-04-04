@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
 from scipy.special import erfc
 from datetime import datetime
+from tqdm import tqdm
 
 
 def conc_func(x, a, b, c, d):
@@ -17,15 +18,18 @@ def import_images(path):
     data = []
     time = []
     show_image = False
-    for file in os.listdir(path):
-        if file.endswith(filetype):
-            im = color.rgb2gray(io.imread(path + "\\" + file))
+    n = 0
+    for file in tqdm(os.listdir(path)):
+        n += 1
+        if file.endswith(filetype) and n % 5 == 0:
+            im = io.imread(path + "\\" + file)
             im = transform.rotate(im, float(angle))
             im = im[crop[0]:crop[1], crop[2]:crop[3]]
             if show_image:
                 plt.imshow(im)
                 plt.show()
-            im = np.flip(np.mean(im, axis=1))
+            im = np.mean(im, axis=1)
+            im = np.flip(im, axis=0)
             data.append(im)
             time.append((datetime.strptime(file[:-len(filetype)], "%Y%m%d%H%M%S") - start_time).total_seconds())
 
@@ -43,8 +47,10 @@ def surf_plot(data, path):
     plt.show()
 
 
-def heatmap_plot(data, path):
-    plt.imshow(np.rot90(data), cmap=plt.cm.gray)
+def heatmap_plot(data, color_data, path):
+    fig, axs = plt.subplots(2)
+    axs[0].imshow(np.rot90(data), cmap=plt.cm.gray)
+    axs[1].imshow(np.rot90(color_data))
     plt.xlabel("Time (arb. units)")
     plt.ylabel("Pixel")
     plt.tight_layout()
@@ -93,7 +99,7 @@ def plot_coeffs(coeffs, time, path):
     axes[1, 1].set_xlabel("t (seconds)")
     axes[1, 1].set_ylabel("Arb. units")
     plt.suptitle(
-        r"Time dependence of fitting parameters y=$a+0.5\cdot c$erfc$\left(\frac{x+b}{2\sqrt{d\cdot t}}\right)$",
+        r"Time dependence of fitting parameters y=$a+0.5\cdot c\cdot$erfc$\left(\frac{x+b}{2\sqrt{d\cdot t}}\right)$",
         fontsize=21)
     plt.savefig(path+"\\plot.pdf")
     plt.show()
@@ -115,8 +121,9 @@ def latex_plot(coeffs, time, path):
 
 
 path = r"\\169.254.39.157\Shared_Folder\Webcam_Test"
-data, time = import_images(path)
+color_data, time = import_images(path)
+data = color.rgb2gray(color_data)
 fit_all(data)
-heatmap_plot(data, path)
+heatmap_plot(data, color_data, path)
+surf_plot(data, path)
 plot_coeffs(fit_all(data), time, path)
-# latex_plot(fit_all(data), time, path)
