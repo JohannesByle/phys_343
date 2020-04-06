@@ -7,6 +7,7 @@ from scipy.special import erfc
 from datetime import datetime
 from tqdm import tqdm
 import imageio
+import pickle
 
 
 def conc_func(x, a, b, c, d):
@@ -20,7 +21,7 @@ def import_images(path):
     time = []
     show_image = False
     n = 0
-    thinning_constant = 10
+    thinning_constant = 1
     for file in tqdm(os.listdir(path)):
         n += 1
         if file.endswith(filetype) and n % thinning_constant == 0:
@@ -51,10 +52,10 @@ def surf_plot(data, path):
 
 
 def heatmap_plot(data, color_data, path, time):
-    fig, axs = plt.subplots(2)
+    fig, axs = plt.subplots(2, figsize=(18, 10.125))
     x = max(time) - min(time)
     y = np.shape(data)[1]
-    aspect = x/(y*4)
+    aspect = x/(y*3)
     extent = [min(time), max(time), 0, y]
     axs[0].imshow(np.rot90(data), aspect=aspect, extent=extent)
     axs[0].set_title("Gray Scale", fontsize=21)
@@ -116,6 +117,57 @@ def plot_coeffs(coeffs, time, path):
     plt.show()
 
 
+def plot_coeffs_comparison(coeffs, data, time, path):
+    x = max(time) - min(time)
+    y = np.shape(data)[1]
+    aspect = x / (y * 4)
+    extent = [min(time), max(time), 0, y]
+
+    fig, axes = plt.subplots(2, figsize=(18, 10.125), sharex="col")
+    axes[0].imshow(np.rot90(color_data), aspect=aspect, extent=extent)
+    axes[0].set_title("Full Color", fontsize=19)
+    axes[0].set_ylabel("Pixel", fontsize=17)
+    axes[1].scatter(time, [n[0] for n in coeffs])
+    axes[1].set_title("a", fontsize=19)
+    axes[1].set_xlabel("t (hours)", fontsize=17)
+    axes[1].set_ylabel("Intensity (arb. units)", fontsize=17)
+    plt.savefig(path + "\\plots\\a_plot.pdf")
+    plt.close(fig)
+
+    fig, axes = plt.subplots(2, figsize=(18, 10.125), sharex="col")
+    axes[0].imshow(np.rot90(color_data), aspect=aspect, extent=extent)
+    axes[0].set_title("Full Color", fontsize=19)
+    axes[0].set_ylabel("Pixel", fontsize=17)
+    axes[1].scatter(time, [n[1] for n in coeffs])
+    axes[1].set_title("b", fontsize=19)
+    axes[1].set_xlabel("t (hours)", fontsize=17)
+    axes[1].set_ylabel("Pixels", fontsize=17)
+    plt.savefig(path + "\\plots\\b_plot.pdf")
+    plt.close(fig)
+
+    fig, axes = plt.subplots(2, figsize=(18, 10.125), sharex="col")
+    axes[0].imshow(np.rot90(color_data), aspect=aspect, extent=extent)
+    axes[0].set_title("Full Color", fontsize=19)
+    axes[0].set_ylabel("Pixel", fontsize=17)
+    axes[1].scatter(time, [n[2] for n in coeffs])
+    axes[1].set_title("c", fontsize=19)
+    axes[1].set_xlabel("t (hours)", fontsize=17)
+    axes[1].set_ylabel("Intensity (arb. units)", fontsize=17)
+    plt.savefig(path + "\\plots\\c_plot.pdf")
+    plt.close(fig)
+
+    fig, axes = plt.subplots(2, figsize=(18, 10.125), sharex="col")
+    axes[0].imshow(np.rot90(color_data), aspect=aspect, extent=extent)
+    axes[0].set_title("Full Color", fontsize=19)
+    axes[0].set_ylabel("Pixel", fontsize=17)
+    axes[1].scatter(time, np.asarray([n[3] for n in coeffs]) / np.asarray(time))
+    axes[1].set_title("d", fontsize=19)
+    axes[1].set_xlabel("t (hours)", fontsize=17)
+    axes[1].set_ylabel("Arb. units", fontsize=17)
+    plt.savefig(path + "\\plots\\d_plot.pdf")
+    plt.close(fig)
+
+
 def latex_plot(coeffs, time, path):
     fig, axes = plt.subplots(2, 2, figsize=(8, 4.5))
     axes[0, 0].scatter(time, [n[0] for n in coeffs])
@@ -144,11 +196,14 @@ def generate_gif(path, filetype):
 
 
 path = r"\\169.254.39.157\Shared_Folder\Webcam_Test"
-# generate_gif(path, ".jpeg")
+generate_gif(path, ".jpeg")
+exit()
 color_data, time = import_images(path)
+pickle.dump((color_data, time), open(path+"\\plots\\data.p", "wb"))
 data = color.rgb2gray(color_data)
-fit_all(data)
+coeffs = fit_all(data)
+plot_coeffs_comparison(coeffs, data, time, path)
 heatmap_plot(data, color_data, path, time)
 surf_plot(data, path)
-plot_coeffs(fit_all(data), time, path)
+plot_coeffs(coeffs, time, path)
 
