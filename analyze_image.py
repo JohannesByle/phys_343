@@ -1,21 +1,15 @@
-import os
-from skimage import io, transform, color
-import numpy as np
-import matplotlib.pyplot as plt
-from scipy.optimize import curve_fit
-from scipy.special import erfc
-from datetime import datetime
-from tqdm import tqdm
-import imageio
 import pickle
+from datetime import datetime
+from scipy.optimize import curve_fit
+from scipy.signal import savgol_filter
+from scipy.special import lambertw
+from skimage import color
 
-
-def conc_func(x, a, b, c, d):
-    return a + 0.5 * c * (1 - erfc((x - b) / (2 * np.sqrt(d))))
+from plot_methods import *
 
 
 def import_images(path):
-    crop, start_time, filetype, angle = eval(open(path + "/data.txt", "r").read()).values()
+    crop, start_time, filetype, angle, height = eval(open(path + "/data.txt", "r").read()).values()
     start_time = datetime.strptime(start_time, "%Y%m%d%H%M%S")
     data = []
     time = []
@@ -34,176 +28,52 @@ def import_images(path):
             im = np.mean(im, axis=1)
             im = np.flip(im, axis=0)
             data.append(im)
-            time.append((datetime.strptime(file[:-len(filetype)], "%Y%m%d%H%M%S") - start_time).total_seconds()/(60*60))
+            time.append((datetime.strptime(file[:-len(filetype)], "%Y%m%d%H%M%S") - start_time).total_seconds())
 
     time, data = zip(*sorted(zip(time, data)))
     return np.asarray(data), time
 
 
-def surf_plot(data, path):
-    x, y = np.mgrid[0:data.shape[0], 0:data.shape[1]]
-    ax = plt.axes(projection="3d")
-    ax.plot_surface(x, y, data, cmap=plt.cm.viridis)
-    plt.xlabel("Time (arb. units)", fontsize=17)
-    plt.ylabel("Pixel", fontsize=17)
-    plt.tight_layout()
-    plt.savefig(path + "\\plots\\surf_plot.pdf")
-    plt.show()
-
-
-def heatmap_plot(data, color_data, path, time):
-    fig, axs = plt.subplots(2, figsize=(18, 10.125))
-    x = max(time) - min(time)
-    y = np.shape(data)[1]
-    aspect = x/(y*3)
-    extent = [min(time), max(time), 0, y]
-    axs[0].imshow(np.rot90(data), aspect=aspect, extent=extent)
-    axs[0].set_title("Gray Scale", fontsize=21)
-    axs[0].set_xlabel("Time (hours)", fontsize=17)
-    axs[0].set_ylabel("Pixel", fontsize=17)
-    axs[1].imshow(np.rot90(color_data), aspect=aspect, extent=extent)
-    axs[1].set_title("Full Color", fontsize=21)
-    axs[1].set_xlabel("Time (hours)", fontsize=17)
-    axs[1].set_ylabel("Pixel", fontsize=17)
-    plt.tight_layout()
-    plt.savefig(path + "\\plots\\heatmap_plot.pdf")
-    plt.show()
-
-
-def fit_all(data):
+def fit_all(data, time, path):
     coeffs = []
-    plot_fit = False
-    for y in data:
-        x = np.asarray(range(len(y)))
-        a = (max(y) - min(y))
-        c = a
-        b = len(y) / 2
-        d = 1
-        args, _ = curve_fit(conc_func, x, y, [a, b, c, d])
+    vals = eval(open(path + "/data.txt", "r").read())
+
+    for n in range(len(data)):
+        y = data[n]
+        x = np.asarray(range(len(y))) * (.09 / (vals["height"][1] - vals["height"][0]))
+        t = time[n]
+        guess = get_guess_params(x, y, t)
+        args, _ = curve_fit(conc_func, (x, np.asarray([t] * len(x))), y, guess)
         coeffs.append(args)
-        if plot_fit:
-            plt.scatter(x, y, label="Data", color="red")
-            plt.plot(x, conc_func(x, *args), label="Fit")
-            plt.xlabel("Height (pixels)", fontsize=17)
-            plt.ylabel("Intensity (arb. units)", fontsize=17)
-            plt.legend(fontsize=17)
-            plt.show()
 
     return coeffs
 
 
-def plot_coeffs(coeffs, time, path):
-    fig, axes = plt.subplots(2, 2, figsize=(18, 10.125))
-    axes[0, 0].scatter(time, [n[0] for n in coeffs])
-    axes[0, 0].set_title("a", fontsize=19)
-    axes[0, 0].set_xlabel("t (hours)")
-    axes[0, 0].set_ylabel("Intensity (arb. units)")
-    axes[0, 1].scatter(time, [n[1] for n in coeffs])
-    axes[0, 1].set_title("b", fontsize=19)
-    axes[0, 1].set_xlabel("t (hours)")
-    axes[0, 1].set_ylabel("Pixels")
-    axes[1, 0].scatter(time, [n[2] for n in coeffs])
-    axes[1, 0].set_title("c", fontsize=19)
-    axes[1, 0].set_xlabel("t (hours)")
-    axes[1, 0].set_ylabel("Intensity (arb. units)")
-    axes[1, 1].scatter(time, np.asarray([n[3] for n in coeffs]) / np.asarray(time))
-    axes[1, 1].set_title("d", fontsize=19)
-    axes[1, 1].set_xlabel("t (hours)")
-    axes[1, 1].set_ylabel("Arb. units")
-    plt.suptitle(
-        r"Time dependence of fitting parameters y=$a+0.5\cdot c\cdot$erfc$\left(\frac{x+b}{2\sqrt{d\cdot t}}\right)$",
-        fontsize=21)
-    plt.savefig(path+"\\plots\\plot.pdf")
-    plt.show()
+def get_guess_params(x, y, t):
+    c = (np.average(y[-10:]) - np.average(y[:10]))
+    a = np.average(y[:10]) + 0.5 * c
+    slope = max(np.gradient(y, x))
+    b = x[np.where(np.gradient(y, x) == slope)[0][0]]
+    d = (c / (2 * np.sqrt(t * np.pi) * slope)) ** 2
+    return [a, b, c, d]
 
 
-def plot_coeffs_comparison(coeffs, data, time, path):
-    x = max(time) - min(time)
-    y = np.shape(data)[1]
-    aspect = x / (y * 4)
-    extent = [min(time), max(time), 0, y]
-
-    fig, axes = plt.subplots(2, figsize=(18, 10.125), sharex="col")
-    axes[0].imshow(np.rot90(color_data), aspect=aspect, extent=extent)
-    axes[0].set_title("Full Color", fontsize=19)
-    axes[0].set_ylabel("Pixel", fontsize=17)
-    axes[1].scatter(time, [n[0] for n in coeffs])
-    axes[1].set_title("a", fontsize=19)
-    axes[1].set_xlabel("t (hours)", fontsize=17)
-    axes[1].set_ylabel("Intensity (arb. units)", fontsize=17)
-    plt.savefig(path + "\\plots\\a_plot.pdf")
-    plt.close(fig)
-
-    fig, axes = plt.subplots(2, figsize=(18, 10.125), sharex="col")
-    axes[0].imshow(np.rot90(color_data), aspect=aspect, extent=extent)
-    axes[0].set_title("Full Color", fontsize=19)
-    axes[0].set_ylabel("Pixel", fontsize=17)
-    axes[1].scatter(time, [n[1] for n in coeffs])
-    axes[1].set_title("b", fontsize=19)
-    axes[1].set_xlabel("t (hours)", fontsize=17)
-    axes[1].set_ylabel("Pixels", fontsize=17)
-    plt.savefig(path + "\\plots\\b_plot.pdf")
-    plt.close(fig)
-
-    fig, axes = plt.subplots(2, figsize=(18, 10.125), sharex="col")
-    axes[0].imshow(np.rot90(color_data), aspect=aspect, extent=extent)
-    axes[0].set_title("Full Color", fontsize=19)
-    axes[0].set_ylabel("Pixel", fontsize=17)
-    axes[1].scatter(time, [n[2] for n in coeffs])
-    axes[1].set_title("c", fontsize=19)
-    axes[1].set_xlabel("t (hours)", fontsize=17)
-    axes[1].set_ylabel("Intensity (arb. units)", fontsize=17)
-    plt.savefig(path + "\\plots\\c_plot.pdf")
-    plt.close(fig)
-
-    fig, axes = plt.subplots(2, figsize=(18, 10.125), sharex="col")
-    axes[0].imshow(np.rot90(color_data), aspect=aspect, extent=extent)
-    axes[0].set_title("Full Color", fontsize=19)
-    axes[0].set_ylabel("Pixel", fontsize=17)
-    axes[1].scatter(time, np.asarray([n[3] for n in coeffs]) / np.asarray(time))
-    axes[1].set_title("d", fontsize=19)
-    axes[1].set_xlabel("t (hours)", fontsize=17)
-    axes[1].set_ylabel("Arb. units", fontsize=17)
-    plt.savefig(path + "\\plots\\d_plot.pdf")
-    plt.close(fig)
+paths = [r"\\169.254.83.120\Webcam_Test", r"D:\Coding\phys_343\DarkSyrup_4-7", r"D:\Coding\phys_343\DarkSyrup_4-9"]
 
 
-def latex_plot(coeffs, time, path):
-    fig, axes = plt.subplots(2, 2, figsize=(8, 4.5))
-    axes[0, 0].scatter(time, [n[0] for n in coeffs])
-    axes[0, 0].set_title("a", fontsize=19)
-    axes[0, 1].scatter(time, [n[1] for n in coeffs])
-    axes[0, 1].set_title("b", fontsize=19)
-    axes[1, 0].scatter(time, [n[2] for n in coeffs])
-    axes[1, 0].set_title("c", fontsize=19)
-    axes[1, 1].scatter(time, np.asarray([n[3] for n in coeffs]) / np.asarray(time))
-    axes[1, 1].set_title("d", fontsize=19)
-    plt.tight_layout()
-    plt.savefig(path + "\\plots\\latex_plot.pdf")
-    plt.show()
-
-
-def generate_gif(path, filetype):
-    images = []
-    n = 0
-    n_frames = 60
-    files = os.listdir(path)
-    for file in tqdm(files):
-        n += 1
-        if file.endswith(filetype) and n % int(len(files)/n_frames) == 0:
-            images.append(imageio.imread(path+"\\"+file))
-    imageio.mimsave(path+"\\plots\\images_gif.gif", images)
-
-
-path = r"\\169.254.39.157\Shared_Folder\Webcam_Test"
-generate_gif(path, ".jpeg")
 exit()
-color_data, time = import_images(path)
-pickle.dump((color_data, time), open(path+"\\plots\\data.p", "wb"))
-data = color.rgb2gray(color_data)
-coeffs = fit_all(data)
-plot_coeffs_comparison(coeffs, data, time, path)
-heatmap_plot(data, color_data, path, time)
-surf_plot(data, path)
-plot_coeffs(coeffs, time, path)
 
+path = paths[3]
+# generate_gif(path)
+# color_data, time = import_images(path)
+# pickle.dump((color_data, time), open(path+"\\plots\\data.p", "wb"))
+color_data, time = pickle.load(open(path + "\\plots\\data.p", "rb"))
+data = color.rgb2gray(color_data)
+for n in range(len(data)):
+    data[n] = np.clip(data[n], 0, np.average(data[n][-int(len(data[n]) / 10):]))
+coeffs = fit_all(data, time, path)
+plot_coeffs_comparison(coeffs, data, color_data, time, path)
+plot_fits(data, coeffs, time, path)
+# heatmap_plot(data, color_data, path, time)
+# surf_plot(data, path)
+plot_coeffs(coeffs, time, path)
