@@ -1,1 +1,0 @@
-{"crop":[200, 300, 250, 350], "start_time":"20200401001526", "filetype":".jpg", "rotate":0, "height":[60, 325]}
